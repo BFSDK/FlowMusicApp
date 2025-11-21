@@ -33,7 +33,6 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-database-compat.js"></script>
     
     <style>
-        /* Ваш существующий CSS остаётся без изменений */
         * {
             margin: 0;
             padding: 0;
@@ -918,22 +917,24 @@
             position: fixed;
             bottom: 150px;
             right: 20px;
-            background: #ff7b00;
+            background: linear-gradient(135deg, #ff7b00, #ff5500);
             color: white;
             border: none;
             border-radius: 50px;
-            padding: 12px 20px;
+            padding: 12px 24px;
             font-size: 14px;
+            font-weight: 600;
             cursor: pointer;
             z-index: 1001;
-            box-shadow: 0 4px 12px rgba(255, 123, 0, 0.3);
+            box-shadow: 0 4px 20px rgba(255, 123, 0, 0.4);
             transition: all 0.3s ease;
             display: none;
         }
 
         .install-button:hover {
-            background: #e66a00;
-            transform: translateY(-2px);
+            background: linear-gradient(135deg, #ff5500, #ff3d00);
+            transform: translateY(-2px) scale(1.05);
+            box-shadow: 0 6px 25px rgba(255, 123, 0, 0.6);
         }
 
         /* PWA Splash Screen */
@@ -943,7 +944,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: #202020;
+            background: linear-gradient(135deg, #202020, #2d2d2d);
             display: flex;
             justify-content: center;
             align-items: center;
@@ -954,6 +955,7 @@
         .splash-content {
             text-align: center;
             color: white;
+            animation: fadeIn 1s ease;
         }
 
         .splash-logo {
@@ -980,6 +982,22 @@
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Стиль для пункта установки в настройках */
+        .settings-item.install-available {
+            background: rgba(255, 123, 0, 0.1) !important;
+            border-left: 4px solid #ff7b00;
+        }
+
+        .settings-item.install-done {
+            background: rgba(76, 175, 80, 0.1) !important;
+            border-left: 4px solid #4CAF50;
         }
     </style>
 </head>
@@ -1043,6 +1061,12 @@
 
     <div class="tab-content settings-tab">
         <div class="settings-container">
+            <!-- НОВЫЙ ПУНКТ: Установить приложение -->
+            <div class="settings-item" id="install-app-item">
+                <div class="settings-title">Установить приложение</div>
+                <div class="settings-description">Добавить Flow Music на главный экран</div>
+            </div>
+            
             <div class="settings-item" id="upload-track">
                 <div class="settings-title">Выложить трек</div>
                 <div class="settings-description">Добавить свою музыку в общую базу</div>
@@ -1304,25 +1328,159 @@
             });
         }
 
-        // PWA Install Prompt
-        let deferredPrompt;
+        // PWA Installation
         const installButton = document.getElementById('install-button');
+        const installAppItem = document.getElementById('install-app-item');
+        let deferredPrompt;
 
+        // Обработчик для кнопки установки в настройках
+        installAppItem.addEventListener('click', function() {
+            if (deferredPrompt) {
+                showInstallPrompt();
+            } else {
+                showInstallInstructions();
+            }
+        });
+
+        // Показ промпта установки
+        function showInstallPrompt() {
+            deferredPrompt.prompt();
+            deferredPrompt.userChoice.then((choiceResult) => {
+                if (choiceResult.outcome === 'accepted') {
+                    console.log('Пользователь установил приложение');
+                    showMessage('Приложение успешно установлено!', 'success');
+                } else {
+                    console.log('Пользователь отказался от установки');
+                    showMessage('Установка отменена', 'info');
+                }
+                deferredPrompt = null;
+                installButton.style.display = 'none';
+            });
+        }
+
+        // Инструкции по установке
+        function showInstallInstructions() {
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+            const isAndroid = /Android/.test(navigator.userAgent);
+            
+            let message = '';
+            
+            if (isIOS) {
+                message = `
+                    Для установки на iOS:
+                    1. Нажмите кнопку "Поделиться" 📤
+                    2. Выберите "На экран «Домой»"
+                    3. Нажмите "Добавить"
+                `;
+            } else if (isAndroid) {
+                message = `
+                    Для установки на Android:
+                    1. Нажмите меню (три точки) ⋮
+                    2. Выберите "Установить приложение"
+                    3. Подтвердите установку
+                `;
+            } else {
+                message = `
+                    Для установки приложения:
+                    1. В меню браузера выберите "Установить приложение"
+                    2. Или используйте кнопку установки в правом нижнем углу
+                `;
+            }
+            
+            alert(`📱 Установка Flow Music\n\n${message}`);
+        }
+
+        // Событие beforeinstallprompt
         window.addEventListener('beforeinstallprompt', (e) => {
             e.preventDefault();
             deferredPrompt = e;
+            
+            // Показываем кнопку установки
             installButton.style.display = 'block';
             
-            installButton.addEventListener('click', async () => {
-                if (deferredPrompt) {
-                    deferredPrompt.prompt();
-                    const { outcome } = await deferredPrompt.userChoice;
-                    if (outcome === 'accepted') {
-                        installButton.style.display = 'none';
-                    }
-                    deferredPrompt = null;
-                }
-            });
+            // Обновляем текст в настройках
+            const installDesc = installAppItem.querySelector('.settings-description');
+            installDesc.textContent = 'Нажмите чтобы установить приложение';
+            installAppItem.classList.add('install-available');
+            
+            console.log('PWA: Доступна установка');
+        });
+
+        // Проверка установленного приложения
+        window.addEventListener('appinstalled', (evt) => {
+            console.log('PWA: Приложение установлено');
+            installButton.style.display = 'none';
+            deferredPrompt = null;
+            
+            // Обновляем текст в настройках
+            const installDesc = installAppItem.querySelector('.settings-description');
+            installDesc.textContent = 'Приложение установлено ✓';
+            installAppItem.classList.remove('install-available');
+            installAppItem.classList.add('install-done');
+        });
+
+        // Проверка если приложение уже установлено
+        if (window.matchMedia('(display-mode: standalone)').matches || 
+            window.navigator.standalone === true) {
+            console.log('PWA: Приложение запущено в standalone режиме');
+            installButton.style.display = 'none';
+            
+            const installDesc = installAppItem.querySelector('.settings-description');
+            installDesc.textContent = 'Приложение установлено ✓';
+            installAppItem.classList.remove('install-available');
+            installAppItem.classList.add('install-done');
+        }
+
+        // Функция показа сообщений
+        function showMessage(text, type = 'info') {
+            const messageEl = document.createElement('div');
+            messageEl.textContent = text;
+            messageEl.style.cssText = `
+                position: fixed;
+                top: 100px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: ${type === 'success' ? '#4CAF50' : '#ff7b00'};
+                color: white;
+                padding: 12px 20px;
+                border-radius: 25px;
+                z-index: 10000;
+                font-size: 14px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            `;
+            
+            document.body.appendChild(messageEl);
+            
+            setTimeout(() => {
+                messageEl.style.opacity = '0';
+                messageEl.style.transition = 'opacity 0.5s ease';
+                setTimeout(() => messageEl.remove(), 500);
+            }, 3000);
+        }
+
+        // Проверка поддержки PWA
+        function checkPwaSupport() {
+            if (!('serviceWorker' in navigator)) {
+                console.warn('PWA: Service Worker не поддерживается');
+                const installDesc = installAppItem.querySelector('.settings-description');
+                installDesc.textContent = 'Ваш браузер не поддерживает установку';
+                installAppItem.style.opacity = '0.5';
+                installAppItem.style.pointerEvents = 'none';
+            }
+            
+            if (!('BeforeInstallPromptEvent' in window)) {
+                console.warn('PWA: BeforeInstallPromptEvent не поддерживается');
+            }
+        }
+
+        // Инициализация проверки PWA
+        checkPwaSupport();
+
+        // Обработчик для кнопки установки
+        installButton.addEventListener('click', async () => {
+            if (deferredPrompt) {
+                showInstallPrompt();
+            }
         });
 
         // Hide splash screen
@@ -1384,7 +1542,26 @@
             }
         }
 
-        // Ваш существующий JavaScript код остаётся здесь...
+        // Отладочная информация
+        console.log('🎵 Flow Music PWA Debug:');
+        console.log('Service Worker:', navigator.serviceWorker ? 'Поддерживается' : 'Не поддерживается');
+        console.log('BeforeInstallPrompt:', 'BeforeInstallPromptEvent' in window ? 'Поддерживается' : 'Не поддерживается');
+        console.log('Display Mode:', window.matchMedia('(display-mode: standalone)').matches ? 'standalone' : 'browser');
+
+        // Проверка манифеста
+        fetch('manifest.json')
+            .then(response => {
+                if (!response.ok) throw new Error('Manifest not found');
+                return response.json();
+            })
+            .then(manifest => {
+                console.log('🎵 Manifest loaded:', manifest.name);
+            })
+            .catch(error => {
+                console.error('🎵 Manifest error:', error);
+            });
+
+        // Ваш существующий JavaScript код...
         // Firebase configuration
         const firebaseConfig = {
             apiKey: "AIzaSyDBKpzdTgGCGJJRf4UwHsMVdA-YvZ0ihE0",
