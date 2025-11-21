@@ -1,129 +1,188 @@
-// sw.js - Service Worker для PWA
-const CACHE_NAME = 'flow-music-v1.2';
+// sw.js - Service Worker для Flow Music
+const CACHE_NAME = 'flow-music-v2.0';
 const urlsToCache = [
   '/',
   '/index.html',
-  '/manifest.json',
-  'https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap',
-  'https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js',
-  'https://www.gstatic.com/firebasejs/9.6.0/firebase-database-compat.js'
+  '/manifest.json'
 ];
 
 // Установка Service Worker
-self.addEventListener('install', event => {
-  console.log('Service Worker: Установлен');
+self.addEventListener('install', (event) => {
+  console.log('🎵 Service Worker: Установка');
+  
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => {
-        console.log('Service Worker: Кеширование файлов');
+      .then((cache) => {
+        console.log('🎵 Service Worker: Кеширование основных файлов');
         return cache.addAll(urlsToCache);
       })
-      .then(() => self.skipWaiting())
+      .then(() => {
+        console.log('🎵 Service Worker: Установка завершена');
+        return self.skipWaiting();
+      })
+      .catch((error) => {
+        console.error('🎵 Service Worker: Ошибка установки', error);
+      })
   );
 });
 
 // Активация Service Worker
-self.addEventListener('activate', event => {
-  console.log('Service Worker: Активирован');
+self.addEventListener('activate', (event) => {
+  console.log('🎵 Service Worker: Активация');
+  
   event.waitUntil(
-    caches.keys().then(cacheNames => {
+    caches.keys().then((cacheNames) => {
       return Promise.all(
-        cacheNames.map(cacheName => {
+        cacheNames.map((cacheName) => {
           if (cacheName !== CACHE_NAME) {
-            console.log('Service Worker: Удаление старого кеша', cacheName);
+            console.log('🎵 Service Worker: Удаление старого кеша', cacheName);
             return caches.delete(cacheName);
           }
         })
       );
-    }).then(() => self.clients.claim())
+    }).then(() => {
+      console.log('🎵 Service Worker: Активация завершена');
+      return self.clients.claim();
+    })
   );
 });
 
-// Перехват запросов
-self.addEventListener('fetch', event => {
-  // Пропускаем запросы к Firebase
-  if (event.request.url.includes('firebaseio.com')) {
+// Обработка запросов
+self.addEventListener('fetch', (event) => {
+  // Пропускаем запросы к Firebase и внешние ресурсы
+  if (event.request.url.includes('firebase') ||
+      event.request.url.includes('googleapis') ||
+      event.request.url.includes('gstatic')) {
+    return;
+  }
+
+  // Для аудио файлов - сеть сначала, потом кеш
+  if (event.request.url.match(/\.(mp3|wav|ogg|m4a)$/i)) {
+    event.respondWith(
+      fetch(event.request)
+        .catch(() => caches.match(event.request))
+    );
     return;
   }
 
   event.respondWith(
     caches.match(event.request)
-      .then(response => {
-        // Возвращаем кешированную версию или делаем запрос
+      .then((response) => {
+        // Возвращаем кешированную версию
         if (response) {
           return response;
         }
 
-        return fetch(event.request).then(response => {
-          // Проверяем валидный ли ответ
-          if(!response || response.status !== 200 || response.type !== 'basic') {
+        // Делаем сетевой запрос
+        return fetch(event.request)
+          .then((response) => {
+            // Проверяем валидный ли ответ
+            if (!response || response.status !== 200 || response.type !== 'basic') {
+              return response;
+            }
+
+            // Клонируем ответ для кеширования
+            const responseToCache = response.clone();
+
+            caches.open(CACHE_NAME)
+              .then((cache) => {
+                // Кешируем только HTML, CSS, JS
+                if (event.request.url.match(/\.(html|css|js|json)$/)) {
+                  cache.put(event.request, responseToCache);
+                }
+              });
+
             return response;
-          }
-
-          // Клонируем ответ
-          const responseToCache = response.clone();
-
-          caches.open(CACHE_NAME)
-            .then(cache => {
-              cache.put(event.request, responseToCache);
-            });
-
-          return response;
-        });
-      })
-      .catch(() => {
-        // Fallback для offline
-        if (event.request.url.includes('.html')) {
-          return caches.match('/index.html');
-        }
+          })
+          .catch(() => {
+            // Fallback для offline
+            if (event.request.destination === 'document') {
+              return caches.match('/index.html');
+            }
+          });
       })
   );
 });
 
-// Фоновая синхронизация (для будущих функций)
-self.addEventListener('sync', event => {
+// Фоновая синхронизация
+self.addEventListener('sync', (event) => {
   if (event.tag === 'background-sync') {
-    console.log('Service Worker: Фоновая синхронизация');
+    console.log('🎵 Service Worker: Фоновая синхронизация');
+    event.waitUntil(doBackgroundSync());
   }
 });
 
-// Push уведомления (для будущих функций)
-self.addEventListener('push', event => {
+async function doBackgroundSync() {
+  // Здесь может быть фоновая синхронизация данных
+  console.log('🎵 Выполняется фоновая синхронизация');
+}
+
+// Push уведомления
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+
+  let data;
+  try {
+    data = event.data.json();
+  } catch (e) {
+    data = { title: 'Flow Music', body: event.data.text() };
+  }
+
   const options = {
-    body: event.data.text(),
-    icon: 'icons/icon-192x192.png',
-    badge: 'icons/icon-72x72.png',
+    body: data.body || 'Новое уведомление',
+    icon: '/icons/icon-192x192.png',
+    badge: '/icons/icon-72x72.png',
     vibrate: [100, 50, 100],
-    data: {
-      dateOfArrival: Date.now(),
-      primaryKey: 1
-    },
+    data: data.url || '/',
     actions: [
       {
-        action: 'explore',
-        title: 'Открыть',
-        icon: 'icons/icon-72x72.png'
+        action: 'play',
+        title: '🎵 Воспроизвести',
       },
       {
         action: 'close',
-        title: 'Закрыть',
-        icon: 'icons/icon-72x72.png'
+        title: '❌ Закрыть'
       }
     ]
   };
 
   event.waitUntil(
-    self.registration.showNotification('Flow Music', options)
+    self.registration.showNotification(data.title || 'Flow Music', options)
   );
 });
 
 // Обработка кликов по уведомлениям
-self.addEventListener('notificationclick', event => {
+self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  if (event.action === 'explore') {
+  if (event.action === 'play') {
+    // Действие для воспроизведения
     event.waitUntil(
-      clients.openWindow('/')
+      clients.matchAll({ type: 'window' }).then((windowClients) => {
+        if (windowClients.length > 0) {
+          return windowClients[0].focus();
+        }
+        return clients.openWindow('/');
+      })
     );
+  } else if (event.action === 'close') {
+    // Ничего не делаем, просто закрываем
+  } else {
+    // Клик по самому уведомлению
+    event.waitUntil(
+      clients.matchAll({ type: 'window' }).then((windowClients) => {
+        if (windowClients.length > 0) {
+          return windowClients[0].focus();
+        }
+        return clients.openWindow('/');
+      })
+    );
+  }
+});
+
+// Сообщения от главного потока
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
   }
 });
